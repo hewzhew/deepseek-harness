@@ -11,6 +11,12 @@ import SessionStore, {
 } from '@deepseek-ai/dsh-session'
 import type { CreateSessionOptions, SessionEventType, SessionHeader, SessionSurface, TodoItem } from '@deepseek-ai/dsh-session'
 
+declare module '@deepseek-ai/dsh-session' {
+  interface SessionEventMap {
+    'external-plugin/audit': { readonly format: 0; readonly value: string }
+  }
+}
+
 describe('Session', () => {
   it('exposes one stable readonly surface view', () => {
     const session = Session.create(SessionId('surface-view'))
@@ -776,6 +782,26 @@ describe('Session', () => {
     expect((event.data.content[0] as { text: string }).text).toBe('original')
   })
 
+  it('marks out-of-repository plugin events ignorable without weakening known events', () => {
+    const session = Session.create(SessionId('external-plugin-event'))
+    const event = session.appendIgnorable('external-plugin/audit', { format: 0, value: 'recorded' })
+
+    expectTypeOf(event.ignorable).toEqualTypeOf<true>()
+    expect(event).toMatchObject({
+      type: 'external-plugin/audit',
+      seq: 0,
+      data: { format: 0, value: 'recorded' },
+      ignorable: true,
+    })
+    expect(Object.isFrozen(event)).toBe(true)
+    expect(Session.create(SessionId('external-plugin-replay'), structuredClone(session.events)).events[0])
+      .toMatchObject({ type: 'external-plugin/audit', ignorable: true })
+
+    expect(() => session.appendIgnorable('todo/write' as never, { todos: [] } as never))
+      .toThrow('known session event "todo/write" must use append()')
+    expect(session.events).toHaveLength(1)
+  })
+
   it('reads a nested append-data getter once and stores its first JSON value', () => {
     const session = Session.create(SessionId('append-nested-drift'))
     let reads = 0
@@ -1092,6 +1118,33 @@ describe('Session', () => {
 
 
 describe('SessionStore', () => {
+  it('publishes and seeds plugin-owned ignorable events through the store lifecycle', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const published: [Session, SessionEvent][] = []
+    ctx.on('session/event', (session, event) => void published.push([session, event]))
+
+    const session = ctx.sessions.create(SessionId('external-plugin-live'))
+    const written = session.appendIgnorable('external-plugin/audit', {
+      format: 0,
+      value: 'persist this receipt',
+    })
+    expect(published).toEqual([[session, written]])
+    expect(written).toMatchObject({
+      type: 'external-plugin/audit',
+      seq: 0,
+      data: { format: 0, value: 'persist this receipt' },
+      ignorable: true,
+    })
+
+    const reopened = ctx.sessions.create(SessionId('external-plugin-reopened'), {
+      seed: structuredClone(session.events),
+    })
+    expect(reopened.events[0]).toEqual(written)
+    expect(reopened.events[1]).toMatchObject({ type: 'session/end-seed', seq: 1, data: {} })
+    expect(reopened.surface.nodes).toEqual([])
+  })
+
   it('creates sessions, emits session/created and session/event', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)

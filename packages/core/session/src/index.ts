@@ -19,6 +19,7 @@ import { snapshotJsonValue } from './json.ts'
 import { deriveEventMessage, SurfaceManager } from './surface.ts'
 import type { SessionSurface } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
+import { KNOWN_SESSION_EVENT_TYPES } from './known-event-types.ts'
 
 export * from './types.ts'
 export { SessionPreparation } from './preparation.ts'
@@ -607,6 +608,39 @@ export class Session {
     ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : []
   ): SessionEvent<T> {
     const surfaceOpts: SurfaceIntent | undefined = opts[0]
+    return this.appendAccepted(type, data, surfaceOpts, false)
+  }
+
+  /**
+   * Append one declaration-merged event owned by an out-of-repository plugin.
+   * The event is log-only and carries `ignorable: true`, so a harness without
+   * that plugin may load the Session without interpreting its private record.
+   * Known first-party event types must use {@link append}; surface events can
+   * never be ignorable because skipping one would change model history.
+   *
+   * @param type - An event type absent from this build's generated known-event list.
+   * @param data - The plugin-owned event payload; must be JSON-serializable.
+   * @returns the committed frozen event with its assigned sequence and timestamp.
+   * @throws if `type` belongs to this build, or if `data` violates the same JSON,
+   *   publication, or reentrancy checks as {@link append}.
+   */
+  appendIgnorable<T extends Exclude<SessionEventType, SurfaceEventType>>(
+    type: T,
+    data: SessionEventMap[T],
+  ): SessionEvent<T> & { readonly ignorable: true } {
+    if (KNOWN_SESSION_EVENT_TYPES.has(type)) {
+      throw new Error(`known session event "${type}" must use append()`)
+    }
+    return this.appendAccepted(type, data, undefined, true) as SessionEvent<T> & { readonly ignorable: true }
+  }
+
+  /** Snapshot, validate, commit, and publish one accepted event. */
+  private appendAccepted<T extends SessionEventType>(
+    type: T,
+    data: SessionEventMap[T],
+    surfaceOpts: SurfaceIntent | undefined,
+    ignorable: boolean,
+  ): SessionEvent<T> {
     const surfaceMetadata = {
       ...surfaceOpts?.sourceEventSeqs === undefined ? {} : { sourceEventSeqs: surfaceOpts.sourceEventSeqs },
       ...surfaceOpts?.surfaceOp === undefined ? {} : { surfaceOp: surfaceOpts.surfaceOp },
@@ -630,6 +664,7 @@ export class Session {
       time: Date.now(),
       data: dataSnapshot,
       ...(surfaceMetadataSnapshot as { surfaceOp?: unknown; sourceEventSeqs?: unknown }),
+      ...(ignorable ? { ignorable: true as const } : {}),
     } as unknown as SessionEvent<T>)
     this.surfaceManager.validateNext(event as SessionEvent)
 
