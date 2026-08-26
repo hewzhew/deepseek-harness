@@ -766,13 +766,19 @@ export function fixtureUserPrompts(fixtureText: string): string[] {
  * @returns the realized fixture text.
  */
 export function realizeSeedFixture(scaffold: WebScaffold, fixtureText: string, id: string): string {
+  const workspaceCwd = escapeJsonStringContent(scaffold.workspaceCwd)
   const realized = fixtureText
-    .split('{{sessionId}}').join(id)
-    .split('{{cwd}}').join(scaffold.workspaceCwd)
+    .split('{{sessionId}}').join(escapeJsonStringContent(id))
+    .split('{{cwd}}').join(workspaceCwd)
   const fixtureCwd = (JSON.parse(realized.split('\n', 1)[0]!) as { cwd?: string }).cwd
   return fixtureCwd === undefined
     ? realized
-    : realized.split(fixtureCwd).join(scaffold.workspaceCwd)
+    : realized.split(escapeJsonStringContent(fixtureCwd)).join(workspaceCwd)
+}
+
+/** Escape one value for substitution inside an existing JSON string literal. */
+function escapeJsonStringContent(value: string): string {
+  return JSON.stringify(value).slice(1, -1)
 }
 
 /**
