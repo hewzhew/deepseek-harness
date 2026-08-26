@@ -439,6 +439,27 @@ describe('chain outlets and the renderSlotChain binding', () => {
     spy.mockRestore()
   })
 
+  it('renders the owner fallback for only the chain occurrence whose elected component crashes', () => {
+    const h = makeHost()
+    h.declare('k.chain', CHAIN_ROOT)
+    h.add('k.chain', chainEntryOf({
+      component: ({ matched }: { matched?: string }) => {
+        if (matched === 'bad') throw new Error('entry boom')
+        return <b>{matched}</b>
+      },
+      select: owner => (owner as { pick?: string }).pick ?? null,
+    }))
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { view } = mountChainRoot(h, { 'k.chain': CHAIN_ROOT }, renderSlotChain => <>
+      <main>{renderSlotChain('k.chain', { pick: 'bad' }, { fallback: <i>host-a</i> })}</main>
+      <aside>{renderSlotChain('k.chain', { pick: 'good' }, { fallback: <i>host-b</i> })}</aside>
+    </>)
+    spy.mockRestore()
+    expect(view.container.querySelector('main')!.textContent).toBe('host-a')
+    expect(view.container.querySelector('aside')!.textContent).toBe('good')
+    expect(view.container.querySelector('[data-slot-error]')).toBeNull()
+  })
+
   it('remounts the boundary on re-election: a failed entry does not black out its replacement', () => {
     const h = makeHost()
     h.declare('k.chain', CHAIN_ROOT)
@@ -453,9 +474,10 @@ describe('chain outlets and the renderSlotChain binding', () => {
     let pick = 'A'
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { view } = mountChainRoot(h, { 'k.chain': CHAIN_ROOT },
-      renderSlotChain => renderSlotChain('k.chain', { pick }))
+      renderSlotChain => renderSlotChain('k.chain', { pick }, { fallback: <i>host</i> }))
     spy.mockRestore()
-    expect(view.container.querySelector('[data-slot-error]')).not.toBeNull()
+    expect(view.container.textContent).toBe('host')
+    expect(view.container.querySelector('[data-slot-error]')).toBeNull()
     // Re-elect entry B: the entry-keyed boundary remounts fresh instead of
     // holding A's failed state over the healthy replacement.
     pick = 'B'
@@ -613,6 +635,47 @@ describe('overlay chains (ChainRenderOpts.overlay)', () => {
     act(() => { h.add('root', { component: () => null }) })
     expect(view.container.textContent).not.toContain('TAKEOVER')
     expect(wrapper().style.display).toBe('contents')
+    expect(input().value).toBe('draft-in-flight')
+    expect(mounted).toHaveBeenCalledTimes(1)
+  })
+
+  it('reveals the resident fallback without remounting it when the elected component crashes', () => {
+    const h = makeHost()
+    h.declare('k.chain', CHAIN_ROOT)
+    h.add('k.chain', chainEntryOf({
+      component: () => { throw new Error('entry boom') },
+      select: owner => (owner as { mode?: string }).mode === 'bad' ? {} : null,
+      priority: 1,
+    }))
+    h.add('k.chain', chainEntryOf({
+      component: () => <b>RECOVERED</b>,
+      select: owner => (owner as { mode?: string }).mode === 'good' ? {} : null,
+      priority: 2,
+    }))
+    const mounted = vi.fn()
+    const Probe = fallbackProbe(mounted)
+    let mode = 'none'
+    const { view } = mountChainRoot(h, { 'k.chain': CHAIN_ROOT },
+      renderSlotChain => renderSlotChain('k.chain', { mode }, { fallback: <Probe />, overlay: true }))
+    const wrapper = () => view.container.querySelector<HTMLElement>('[data-chain-overlay-fallback="k.chain"]')!
+    const input = () => view.container.querySelector<HTMLInputElement>('input[aria-label="probe"]')!
+    fireEvent.change(input(), { target: { value: 'draft-in-flight' } })
+
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mode = 'bad'
+    act(() => { h.add('root', { component: () => null }) })
+    spy.mockRestore()
+
+    expect(wrapper().style.display).toBe('contents')
+    expect(input().value).toBe('draft-in-flight')
+    expect(view.container.querySelectorAll('input[aria-label="probe"]')).toHaveLength(1)
+    expect(view.container.querySelector('[data-slot-error]')).toBeNull()
+    expect(mounted).toHaveBeenCalledTimes(1)
+
+    mode = 'good'
+    act(() => { h.add('root', { component: () => null }) })
+    expect(view.container.textContent).toContain('RECOVERED')
+    expect(wrapper().style.display).toBe('none')
     expect(input().value).toBe('draft-in-flight')
     expect(mounted).toHaveBeenCalledTimes(1)
   })

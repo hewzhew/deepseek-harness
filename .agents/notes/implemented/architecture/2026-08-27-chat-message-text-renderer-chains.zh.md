@@ -17,7 +17,7 @@ Host 需要一处权威止于正文的扩展点。没有扩展接收消息时，
 - `conversation.chat.userText` 渲染一条持久 user 消息拼接后的原始文本。`UserMessageTextOwnerProps` 携带引擎拥有的 `nodeKey` 与 `text`。
 - `conversation.chat.assistantText` 渲染一个 Assistant 文本 block。`AssistantMessageTextOwnerProps` 携带 `nodeKey`、源码顺序中的 `blockIndex`、`text`，以及该 Assistant step 是否仍在 streaming。
 
-每个 owner 调用 `renderSlotChain` 时都传入 Host renderer 作为 fallback。因此所有 user selector 都拒绝时保留字面文本与引用投影；所有 Assistant selector 都拒绝时保留官方 Markdown renderer、代码操作与文件提及。chain selector 是唯一的路由判定，遵循 [slot 体系的 chain 约定](2026-07-22-slot-type-chain-implementation.zh.md)。
+每个 owner 调用 `renderSlotChain` 时都传入 Host renderer 作为 fallback。因此所有 user selector 都拒绝时保留字面文本与引用投影；所有 Assistant selector 都拒绝时保留官方 Markdown renderer、代码操作与文件提及。selector 抛错时会被报告并按拒绝处理。已选中的 chain 组件抛错时，它自己的逐次分派错误边界会报告失败并渲染同一个 owner fallback，但不移除注册，因此其他消息仍能选中该贡献。chain selector 仍是唯一的路由判定，遵循 [slot 体系的 chain 约定](2026-07-22-slot-type-chain-implementation.zh.md)。
 
 Node key 只在单个 Session 内稳定，并非全局稳定。因此 selector 经框架独立的只读 scope 参数获得当前 `sessionId`，再将它与 owner 的 `nodeKey` 以及 Assistant block 的 `blockIndex` 组合使用。owner 类型仍然只承载消息数据，不重复框架 scope identity。
 
@@ -27,7 +27,7 @@ keyed Chat renderer 拥有每个子项的声明。卸载该 renderer 会通过�
 
 ## 验证
 
-Conversation 组件测试覆盖 user 接管、多个 Assistant 文本 block、源码 block index、稳定 Node key、streaming 状态、所有 selector 拒绝时的字面文本与 Markdown fallback，以及 Host 持有的推理和操作。Slot renderer 测试覆盖不可变的 root、严格会话与 session-maybe selector scope identity 以及 Session 切换；类型测试保持各 scope 的 `sessionId` 约定彼此分明。apply 测试覆盖两个子项的声明，以及随所属插件 fiber 一起移除。生成的 Client slot 目录向扩展作者公开这两个名称与 owner 字段。
+Conversation 组件测试覆盖 user 接管、多个 Assistant 文本 block、源码 block index、稳定 Node key、streaming 状态、所有 selector 拒绝时的字面文本与 Markdown fallback，以及 Host 持有的推理和操作。Slot renderer 测试覆盖不可变的 root、严格会话与 session-maybe selector scope identity、Session 切换、selector 异常，以及逐次分派组件失败返回 owner fallback 且不禁用健康分派；类型测试保持各 scope 的 `sessionId` 约定彼此分明。apply 测试覆盖两个子项的声明，以及随所属插件 fiber 一起移除。生成的 Client slot 目录向扩展作者公开这两个名称与 owner 字段。
 
 ## 考虑过的替代方案
 
@@ -41,6 +41,6 @@ Conversation 组件测试覆盖 user 接管、多个 Assistant 文本 block、�
 
 ## 后果
 
-正文表现插件可以通过类型化、受生命周期管理的注册完成集成，不必复制消息行或修补 DOM。Host 继续拥有布局、非文本内容、消息 chrome、无障碍语义以及没有扩展时的结果。Assistant 扩展按文本 block 分别收到分派，而不是收到拼接后的整条消息，因此能保留推理与图片 block 周围的源码顺序。
+正文表现插件可以通过类型化、受生命周期管理的注册完成集成，不必复制消息行或修补 DOM。Host 继续拥有布局、非文本内容、消息 chrome、无障碍语义以及没有扩展时的结果。renderer 缺陷只会让选中它的那一次分派降级为 Host 表现，不会留下空消息正文，也不会在全局禁用该贡献。Assistant 扩展按文本 block 分别收到分派，而不是收到拼接后的整条消息，因此能保留推理与图片 block 周围的源码顺序。
 
 代价是增加两个公开 slot 名称与 owner 类型。当选 renderer 要负责呈现自己接收的原始文本，包括 streaming 更新；Host 无法保证替代内容内部仍有 Markdown、引用或代码控件。需要完整不同消息行的扩展仍应使用 `conversation.chat.node`，而不是扩张这两个正文 chain。

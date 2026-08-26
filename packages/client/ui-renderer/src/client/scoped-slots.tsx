@@ -309,13 +309,73 @@ function entryKeyOf(entry: StoredEntry): number {
  * factory) must not take down siblings. Assembly errors (missing providers)
  * rethrow — a miswired shell must fail loud, not degrade into fallbacks.
  * Every catch reports through `onEntryError` (the ledger's supervision
- * seam); for shadowing kinds the report abdicates the entry, the outlet
+ * seam). For shadowing kinds the report abdicates the entry, the outlet
  * re-renders onto the cell's next survivor, and this boundary's crash face
- * only shows until that re-render lands (permanently once the cell is dry —
- * the outlet then owns the crash face).
+ * remains only when the cell runs dry. A chain entry remains registered and
+ * this occurrence renders the owner fallback instead.
  */
+interface ChainErrorFallback {
+  readonly node: ReactNode
+}
+
+interface ChainOverlayProps {
+  readonly slotKey: string
+  readonly fallback: ReactNode
+  readonly electedKey: number | undefined
+  readonly renderElected: ((onFailure: () => void) => ReactNode) | undefined
+}
+
+interface ChainOverlayState {
+  readonly electedKey: number | undefined
+  readonly failed: boolean
+}
+
+/** Keeps an overlay fallback mounted while exposing it after the elected entry fails. */
+class ChainOverlay extends Component<ChainOverlayProps, ChainOverlayState> {
+  override state: ChainOverlayState = {
+    electedKey: this.props.electedKey,
+    failed: false,
+  }
+
+  static getDerivedStateFromProps(
+    props: ChainOverlayProps,
+    state: ChainOverlayState,
+  ): ChainOverlayState | null {
+    if (props.electedKey === state.electedKey) return null
+    return { electedKey: props.electedKey, failed: false }
+  }
+
+  private readonly markFailed = () => {
+    const electedKey = this.props.electedKey
+    if (electedKey === undefined) return
+    this.setState(state => state.electedKey === electedKey ? { ...state, failed: true } : null)
+  }
+
+  override render(): ReactNode {
+    const { slotKey, fallback, electedKey, renderElected } = this.props
+    const showFallback = electedKey === undefined || this.state.failed
+    return (
+      <>
+        <div
+          data-chain-overlay-fallback={slotKey}
+          style={{ display: showFallback ? 'contents' : 'none' }}
+        >
+          {fallback}
+        </div>
+        {renderElected?.(this.markFailed) ?? null}
+      </>
+    )
+  }
+}
+
 class SlotErrorBoundary extends Component<
-  { slotKey: string; onEntryError: (error: unknown) => void; children: ReactNode }, { failed: boolean }
+  {
+    slotKey: string
+    onEntryError: (error: unknown) => void
+    errorFallback?: ChainErrorFallback | undefined
+    children: ReactNode
+  },
+  { failed: boolean }
 > {
   override state = { failed: false }
   static getDerivedStateFromError(error: unknown): { failed: boolean } {
@@ -327,7 +387,10 @@ class SlotErrorBoundary extends Component<
     this.props.onEntryError(error)
   }
   override render(): ReactNode {
-    if (this.state.failed) return <div data-slot-error={this.props.slotKey} />
+    if (this.state.failed) {
+      if (this.props.errorFallback !== undefined) return this.props.errorFallback.node
+      return <div data-slot-error={this.props.slotKey} />
+    }
     return this.props.children
   }
 }
@@ -615,7 +678,9 @@ function RootEntry({ entry, ownerProps, slotKey, slotInjected, hookContext, hasH
   return renderEntry(slotKey, Comp, kit, standard, injected, slotInjected, ownerProps, hookContext, hasHookContext)
 }
 
-function StrictSessionEntry({ slotKey, entry, ownerProps, slotInjected, hookContext, hasHookContext, onEntryError }: {
+function StrictSessionEntry({
+  slotKey, entry, ownerProps, slotInjected, hookContext, hasHookContext, onEntryError, errorFallback,
+}: {
   slotKey: string
   entry: StoredEntry
   ownerProps: object
@@ -623,13 +688,19 @@ function StrictSessionEntry({ slotKey, entry, ownerProps, slotInjected, hookCont
   hookContext: unknown
   hasHookContext: boolean
   onEntryError: (error: unknown) => void
+  errorFallback?: ChainErrorFallback | undefined
 }) {
   const info = useSessionMaybeProvideInfo()
   if (info.sessionId === undefined) return null
   // Per-session remount rides this key; per-entry remount rides the outer
   // element's entry-identity key (the outlet's guarded() call).
   return (
-    <SlotErrorBoundary slotKey={slotKey} key={info.sessionId} onEntryError={onEntryError}>
+    <SlotErrorBoundary
+      slotKey={slotKey}
+      key={info.sessionId}
+      onEntryError={onEntryError}
+      errorFallback={errorFallback}
+    >
       <SessionEntry
         entry={entry}
         ownerProps={ownerProps}
@@ -726,7 +797,13 @@ function renderOutletContent(
   // The boundary must wrap the Entry ELEMENT, not live inside it: inject
   // factories and kit synthesis run in the Entry body and must land in the
   // per-entry fallback rather than escaping to the tree above.
-  const guarded = (entry: StoredEntry, key?: string | number, owner: object = ownerProps) => {
+  const guarded = (
+    entry: StoredEntry,
+    key?: string | number,
+    owner: object = ownerProps,
+    chainFailure?: () => void,
+    chainErrorFallback?: ChainErrorFallback,
+  ) => {
     const hasHookContext = opts !== undefined && Object.hasOwn(opts, 'hookContext')
     const hookContext = opts?.hookContext
     // Shadowing kinds abdicate on crash (the cell falls to its next
@@ -735,7 +812,11 @@ function renderOutletContent(
     // change the static crash face.
     const onEntryError = (error: unknown) => {
       host.reportEntryError(slotKey, entry, error, { abdicate: spec.kind !== 'chain' })
+      chainFailure?.()
     }
+    const errorFallback = spec.kind === 'chain'
+      ? chainErrorFallback ?? { node: opts?.fallback ?? null }
+      : undefined
     return spec.scope === 'session'
       ? (
         <StrictSessionEntry
@@ -746,11 +827,17 @@ function renderOutletContent(
           hookContext={hookContext}
           hasHookContext={hasHookContext}
           onEntryError={onEntryError}
+          errorFallback={errorFallback}
           key={key}
         />
       )
       : (
-        <SlotErrorBoundary slotKey={slotKey} key={key} onEntryError={onEntryError}>
+        <SlotErrorBoundary
+          slotKey={slotKey}
+          key={key}
+          onEntryError={onEntryError}
+          errorFallback={errorFallback}
+        >
           {spec.scope === 'session-maybe'
             ? (
               <SessionMaybeEntry
@@ -800,7 +887,7 @@ function renderOutletContent(
     // contract), so the routing pass runs per render with zero mount side
     // effects: the first non-null election renders, decliners never mount.
     const selectScope = chainSelectScope(spec.scope, sessionInfo)
-    let elected: ReactNode = null
+    let elected: { entry: StoredEntry; key: number; owner: object } | undefined
     for (const entry of entries) {
       let matched: unknown
       try {
@@ -821,7 +908,7 @@ function renderOutletContent(
         continue
       }
       if (matched !== null) {
-        elected = guarded(entry, entryKeyOf(entry), { ...ownerProps, matched })
+        elected = { entry, key: entryKeyOf(entry), owner: { ...ownerProps, matched } }
         break
       }
     }
@@ -832,18 +919,25 @@ function renderOutletContent(
       // the owner's layout. The wrapper's tree position is constant, so React
       // reconciles instead of remounting and fallback state survives takeover.
       return (
-        <>
-          <div
-            data-chain-overlay-fallback={slotKey}
-            style={{ display: elected === null ? 'contents' : 'none' }}
-          >
-            {opts.fallback ?? null}
-          </div>
-          {elected}
-        </>
+        <ChainOverlay
+          slotKey={slotKey}
+          fallback={opts.fallback ?? null}
+          electedKey={elected?.key}
+          renderElected={elected === undefined
+            ? undefined
+            : onFailure => guarded(
+              elected.entry,
+              elected.key,
+              elected.owner,
+              onFailure,
+              { node: null },
+            )}
+        />
       )
     }
-    return elected ?? <>{opts?.fallback ?? null}</>
+    return elected === undefined
+      ? <>{opts?.fallback ?? null}</>
+      : guarded(elected.entry, elected.key, elected.owner)
   }
   // list: one row per id cell — the cell's shadowing winner, or the crash
   // face once every entry of the cell abdicated (a dry cell must not

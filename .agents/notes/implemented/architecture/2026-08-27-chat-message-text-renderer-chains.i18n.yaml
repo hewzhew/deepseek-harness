@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-27-chat-message-text-renderer-chains.md
-2026-08-27-chat-message-text-renderer-chains.md: aaee725af04f802b787dc03bffbc8ec512db9607
-2026-08-27-chat-message-text-renderer-chains.zh.md: bc2f2478e14cbabbf0de9c9e1c4d297f85c179c9
+2026-08-27-chat-message-text-renderer-chains.md: 0cba2c3c4242d922c2a9a08e84414d1efddcdb2c
+2026-08-27-chat-message-text-renderer-chains.zh.md: 883754c263824afbbe28f8ac591713456482a82a

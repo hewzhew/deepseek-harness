@@ -17,7 +17,7 @@ The built-in `user` and `assistant-step` keyed Chat renderers declare two sessio
 - `conversation.chat.userText` renders the joined raw text of one durable user message. `UserMessageTextOwnerProps` carries the engine-owned `nodeKey` and `text`.
 - `conversation.chat.assistantText` renders one Assistant text block. `AssistantMessageTextOwnerProps` carries `nodeKey`, the source-order `blockIndex`, `text`, and whether that Assistant step is streaming.
 
-Each owner calls `renderSlotChain` with the Host rendering as its fallback. An all-declined user chain therefore retains literal text and reference projection; an all-declined Assistant chain retains the official Markdown renderer, code actions, and file mentions. The chain selector is the only routing decision, following the [slot-system chain contract](2026-07-22-slot-type-chain-implementation.md).
+Each owner calls `renderSlotChain` with the Host rendering as its fallback. An all-declined user chain therefore retains literal text and reference projection; an all-declined Assistant chain retains the official Markdown renderer, code actions, and file mentions. A throwing selector is reported and treated as a decline. If an elected chain component throws, its per-occurrence error boundary reports the failure and renders the same owner fallback without retiring the registration, so another message can still elect that contribution. The chain selector remains the only routing decision, following the [slot-system chain contract](2026-07-22-slot-type-chain-implementation.md).
 
 Node keys are stable within one Session, not globally. The selector therefore receives the current `sessionId` through the framework's separate read-only scope argument and combines it with the owner `nodeKey` and, for Assistant blocks, `blockIndex`. The owner types remain message data only; they do not duplicate framework scope identity.
 
@@ -27,7 +27,7 @@ The keyed Chat renderer owns each child declaration. Unloading that renderer rem
 
 ## Verification
 
-Conversation component tests cover user takeover, multiple Assistant text blocks, source block indexes, stable Node keys, streaming state, all-declined literal and Markdown fallbacks, and Host-owned reasoning and actions. Slot renderer tests cover immutable root, strict-session, and session-maybe selector scope identities and Session switches; type tests keep the scope-specific `sessionId` contracts distinct. Apply tests cover both child declarations and their removal with the owning plugin fiber. The generated Client slot catalog publishes the two names and owner fields for extension authors.
+Conversation component tests cover user takeover, multiple Assistant text blocks, source block indexes, stable Node keys, streaming state, all-declined literal and Markdown fallbacks, and Host-owned reasoning and actions. Slot renderer tests cover immutable root, strict-session, and session-maybe selector scope identities, Session switches, selector exceptions, and per-occurrence component failures returning to the owner fallback without disabling healthy occurrences; type tests keep the scope-specific `sessionId` contracts distinct. Apply tests cover both child declarations and their removal with the owning plugin fiber. The generated Client slot catalog publishes the two names and owner fields for extension authors.
 
 ## Alternatives considered
 
@@ -41,6 +41,6 @@ Conversation component tests cover user takeover, multiple Assistant text blocks
 
 ## Consequences
 
-Text presentation plugins can integrate through a typed, lifecycle-owned registration without copying the message row or patching the DOM. The Host continues to own layout, non-text content, message chrome, accessibility, and the no-extension result. Assistant extensions receive one dispatch per text block rather than one concatenated message, preserving source order around reasoning and image blocks.
+Text presentation plugins can integrate through a typed, lifecycle-owned registration without copying the message row or patching the DOM. The Host continues to own layout, non-text content, message chrome, accessibility, and the no-extension result. A renderer defect degrades only its elected occurrence to Host presentation instead of leaving that message body empty or disabling the contribution globally. Assistant extensions receive one dispatch per text block rather than one concatenated message, preserving source order around reasoning and image blocks.
 
 The cost is two additional public slot names and owner types. A selected renderer is responsible for presenting the raw text it accepts, including streaming updates; the Host cannot guarantee Markdown, references, or code controls inside an elected replacement. Extensions needing a different complete row still use `conversation.chat.node` rather than expanding these text chains.
