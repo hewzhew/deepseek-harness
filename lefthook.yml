@@ -52,4 +52,8 @@ pre-merge-commit:
 pre-push:
   jobs:
     - name: typecheck
-      run: pnpm run typecheck
+      run: |
+        if command -v pnpm >/dev/null 2>&1; then
+          exec pnpm run typecheck
+        fi
+        exec pnpm.cmd run typecheck

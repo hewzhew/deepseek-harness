@@ -522,6 +522,27 @@ describe('Documentation site publication', () => {
 })
 
 describe('Git hooks', () => {
+  it('resolves pnpm from POSIX and Windows sh environments', () => {
+    const lefthook = loadWorkflow('lefthook.yml')
+    const prePush = lefthook['pre-push']
+    if (!isRecord(prePush) || !Array.isArray(prePush.jobs)) {
+      throw new TypeError('lefthook must define pre-push jobs')
+    }
+    const typecheck: unknown = prePush.jobs.find(
+      (job: unknown) => isRecord(job) && job.name === 'typecheck',
+    )
+
+    expect(typecheck).toMatchObject({
+      run: [
+        'if command -v pnpm >/dev/null 2>&1; then',
+        '  exec pnpm run typecheck',
+        'fi',
+        'exec pnpm.cmd run typecheck',
+        '',
+      ].join('\n'),
+    })
+  })
+
   it('leaves frozen Agent Note sidecars to the archive verifier', () => {
     const lefthook = loadWorkflow('lefthook.yml')
 
