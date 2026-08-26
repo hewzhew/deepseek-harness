@@ -4,7 +4,7 @@ import { AssistantNodeView } from './AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from './CommandNodeView.tsx'
 import {
   CompactionNodeView, ContextMessageNodeView, RetryNodeView, TurnErrorNodeView,
-  TurnMaxTokensNodeView, UnknownNodeView, UserMessageNodeView,
+  SteeringMessageNodeView, TurnMaxTokensNodeView, UnknownNodeView, UserMessageNodeView,
 } from './MessageItem.tsx'
 import { TurnTailNodeView } from './TurnTailNodeView.tsx'
 
@@ -13,14 +13,22 @@ import { TurnTailNodeView } from './TurnTailNodeView.tsx'
  * @param ctx - owning UI Conversation context.
  */
 export function registerChatNodeRenderers(ctx: Context): void {
+  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
+    name: 'conversation.chat.node',
+    key: 'user',
+    locale: NS,
+    children: { 'conversation.chat.userText': { kind: 'chain', scope: 'session' } },
+  }, UserMessageNodeView))
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
-    { name: 'conversation.chat.node', key: 'user', locale: NS }, UserMessageNodeView))
-  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
-    { name: 'conversation.chat.node', key: 'steering', locale: NS }, UserMessageNodeView))
+    { name: 'conversation.chat.node', key: 'steering', locale: NS }, SteeringMessageNodeView))
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
     { name: 'conversation.chat.node', key: 'context', locale: NS }, ContextMessageNodeView))
-  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
-    { name: 'conversation.chat.node', key: 'assistant-step', locale: NS }, AssistantNodeView))
+  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
+    name: 'conversation.chat.node',
+    key: 'assistant-step',
+    locale: NS,
+    children: { 'conversation.chat.assistantText': { kind: 'chain', scope: 'session' } },
+  }, AssistantNodeView))
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
     name: 'conversation.chat.node',
     key: 'command',

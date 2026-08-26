@@ -9,6 +9,7 @@ import type {
   ModelRetryNode, TurnErrorNode, UserMessageNode,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { JsonBlock, MessageText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
 import { ReferenceIcon } from '../reference/ReferenceIcon.tsx'
 import { CompactionItem } from './CompactionItem.tsx'
@@ -214,10 +215,12 @@ function projectUserText(text: string, sessionLabels: readonly string[]): ReactN
 
 /** Right-aligned bubble shared by user and steering rows. */
 function UserStyleBubble({
-  content, renderMessageImages, actions, pending = false, referenceLabels = [], t,
+  content, renderMessageImages, renderText, actions, pending = false, referenceLabels = [], t,
 }: {
   content: readonly unknown[]
   renderMessageImages: ChatNodeOwnerProps['renderMessageImages']
+  /** Optional fine-grained text outlet; the caller supplies the Host fallback. */
+  renderText?: ((text: string, fallback: ReactNode) => ReactNode) | undefined
   /** Optional IconActions (or similar) below the bubble; receives the joined text. */
   actions?: (text: string) => ReactNode
   /** Whether this is the Host-authoritative pre-admission steering projection. */
@@ -234,7 +237,9 @@ function UserStyleBubble({
       <div className={css.userStack}>
         {renderMessageImages({ images, align: 'end' })}
         {showBubble && <div className={css.bubble}>
-          {projectUserText(text, referenceLabels)}
+          {text !== '' && (renderText === undefined
+            ? projectUserText(text, referenceLabels)
+            : renderText(text, projectUserText(text, referenceLabels)))}
           {rest.map((block, i) => <JsonBlock key={i} label={t('message.extraBlock')} payload={block} truncatedLabel={truncated} />)}
         </div>}
         {referenceLabels.length > 0 && (
@@ -277,10 +282,42 @@ export function PendingSteeringBubble({ content, renderMessageImages, t }: {
   )
 }
 
-/** User and admitted-steering keyed Chat renderer. */
+type UserMessageNodeViewProps = ChatNodeViewProps<'user'>
+  & PropsRenderSlots<'conversation.chat.userText'>
+
+/** Durable user-message renderer with a selector-routed text outlet. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
+  node, renderMessageImages, renderSlotChain, t,
+}: UserMessageNodeViewProps) {
+  const data = node.data
+  return (
+    <UserStyleBubble
+      content={data.content}
+      renderMessageImages={renderMessageImages}
+      renderText={(text, fallback) => renderSlotChain(
+        'conversation.chat.userText',
+        { nodeKey: node.key, text },
+        { fallback },
+      )}
+      {...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }}
+      t={t}
+      actions={text => (
+        <MessageIconActions
+          text={text}
+          time={data.time}
+          clock="start"
+          className={css.actions}
+          t={t}
+        />
+      )}
+    />
+  )
+})
+
+/** Admitted steering renderer; steering remains literal Host text. */
+export const SteeringMessageNodeView = memo(function SteeringMessageNodeView({
   node, renderMessageImages, t,
-}: ChatNodeViewProps<'user' | 'steering'>) {
+}: ChatNodeViewProps<'steering'>) {
   const data = node.data
   return (
     <UserStyleBubble

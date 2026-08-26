@@ -17,7 +17,8 @@ import {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import type {
-  ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps, SelectionTarget, UseChatNodeTurnData,
+  AssistantMessageTextOwnerProps, ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps,
+  SelectionTarget, UserMessageTextOwnerProps, UseChatNodeTurnData,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
@@ -28,7 +29,7 @@ import { AssistantNodeView } from '../src/client/chat/AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from '../src/client/chat/CommandNodeView.tsx'
 import {
   CompactionNodeView, ContextMessageNodeView, RetryNodeView, TurnErrorNodeView,
-  TurnMaxTokensNodeView, UnknownNodeView, UserMessageNodeView,
+  SteeringMessageNodeView, TurnMaxTokensNodeView, UnknownNodeView, UserMessageNodeView,
 } from '../src/client/chat/MessageItem.tsx'
 import { TurnTailNodeView } from '../src/client/chat/TurnTailNodeView.tsx'
 import { formatRunDuration } from '../src/client/chat/message-chrome.ts'
@@ -46,6 +47,9 @@ beforeEach(() => {
 
 const SID = 's1' as SessionId
 type RoutedChatNodeOwner = ChatNodeOwnerProps & { readonly node: ChatNode }
+type TextChainKey = 'conversation.chat.userText' | 'conversation.chat.assistantText'
+type TextChainOwner = UserMessageTextOwnerProps | AssistantMessageTextOwnerProps
+type TextChainRenderer = (key: TextChainKey, owner: TextChainOwner, fallback: React.ReactNode) => React.ReactNode
 
 function snapshotBase(): ConversationSnapshot {
   return {
@@ -180,6 +184,19 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     React.ComponentProps<typeof TurnTailNodeView>['renderSlotChain']
   const renderTurnTailSlot = (() => null) as unknown as
     React.ComponentProps<typeof TurnTailNodeView>['renderSlot']
+  const textChainOwners: Array<{ key: TextChainKey; owner: TextChainOwner }> = []
+  let textChainRenderer: TextChainRenderer = (_key, _owner, fallback) => fallback
+  const renderTextChain = ((key: TextChainKey, owner: TextChainOwner, opts?: {
+    fallback?: React.ReactNode
+  }) => {
+    textChainOwners.push({ key, owner })
+    return textChainRenderer(key, owner, opts?.fallback ?? null)
+  })
+  const renderUserTextChain = renderTextChain as unknown as
+    React.ComponentProps<typeof UserMessageNodeView>['renderSlotChain']
+  const renderAssistantTextChain = renderTextChain as unknown as
+    React.ComponentProps<typeof AssistantNodeView>['renderSlotChain']
+  const SessionProviderStub: ChatViewSlotProps['SessionProvider'] = ({ children }) => <>{children(SID)}</>
   const renderSlot = ((key: string, owner: object, opts?: {
     fallback?: React.ReactNode
     hookContext?: unknown
@@ -198,12 +215,25 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     )
     switch (nodeOwner.node.kind) {
       case 'user':
+        return (
+          <UserMessageNodeView
+            {...nodeProps<'user'>()}
+            renderSlotChain={renderUserTextChain}
+            SessionProvider={SessionProviderStub}
+          />
+        )
       case 'steering':
-        return <UserMessageNodeView {...nodeProps<'user' | 'steering'>()} />
+        return <SteeringMessageNodeView {...nodeProps<'steering'>()} />
       case 'context':
         return <ContextMessageNodeView {...nodeProps<'context'>()} />
       case 'assistant-step':
-        return <AssistantNodeView {...nodeProps<'assistant-step'>()} />
+        return (
+          <AssistantNodeView
+            {...nodeProps<'assistant-step'>()}
+            renderSlotChain={renderAssistantTextChain}
+            SessionProvider={SessionProviderStub}
+          />
+        )
       case 'command':
         return (
           <CommandNodeView
@@ -261,7 +291,6 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   }) as unknown as ChatViewSlotProps['renderSlot']
   // SessionProvider seat arrives with the session-scope child declaration;
   // ChatView never invokes it (render-prop pass-through stub).
-  const SessionProviderStub: ChatViewSlotProps['SessionProvider'] = ({ children }) => <>{children(SID)}</>
   const props: ChatViewSlotProps = {
     sessionId: SID,
     useSession: bindSnapshotSelector(source),
@@ -293,9 +322,10 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     t,
   }
   const setSelection = (next: SelectionTarget | null): void => { chat.actions.select(next) }
+  const setTextChainRenderer = (next: TextChainRenderer): void => { textChainRenderer = next }
   return {
     set, ChatView, props, openDetails, openFile, loadOlder, inspectCall,
-    chatScroll, forkAt, setSelection, toolOwners,
+    chatScroll, forkAt, setSelection, setTextChainRenderer, textChainOwners, toolOwners,
   }
 }
 
@@ -817,6 +847,80 @@ describe('ChatView', () => {
     })
     expect(view.getByText('已停止')).toBeTruthy()
     expect(view.container.querySelectorAll('h1')).toHaveLength(2)
+  })
+
+  it('routes only durable user and Assistant text bodies through their selector chains', () => {
+    const userNode = user(1, 'user source')
+    const assistantNode: AssistantMessageNode = {
+      ...assistant(2, 'unused'),
+      blocks: [
+        { kind: 'text', text: 'first source' },
+        { kind: 'reasoning', text: 'reasoning remains Host-owned' },
+        { kind: 'text', text: 'second source' },
+      ],
+    }
+    const h = makeHarness({ nodes: [userNode, assistantNode] })
+    h.setTextChainRenderer((key, owner) => (
+      <span data-testid={`${key}:${owner.nodeKey}`}>
+        {'blockIndex' in owner ? `${owner.blockIndex}:` : ''}{owner.text}
+      </span>
+    ))
+    const view = render(<h.ChatView {...h.props} />)
+
+    expect(view.getByTestId('conversation.chat.userText:fixture:user:1').textContent).toBe('user source')
+    expect(view.getAllByTestId('conversation.chat.assistantText:fixture:assistant:2')
+      .map(element => element.textContent)).toEqual(['0:first source', '2:second source'])
+    expect(view.getByText('reasoning remains Host-owned')).toBeTruthy()
+    expect(view.getAllByRole('button', { name: '复制' })).toHaveLength(1)
+    expect(h.textChainOwners).toEqual([
+      {
+        key: 'conversation.chat.userText',
+        owner: { nodeKey: 'fixture:user:1', text: 'user source' },
+      },
+      {
+        key: 'conversation.chat.assistantText',
+        owner: {
+          nodeKey: 'fixture:assistant:2', blockIndex: 0, text: 'first source', streaming: false,
+        },
+      },
+      {
+        key: 'conversation.chat.assistantText',
+        owner: {
+          nodeKey: 'fixture:assistant:2', blockIndex: 2, text: 'second source', streaming: false,
+        },
+      },
+    ])
+  })
+
+  it('reports the running Assistant identity to the text selector while streaming', () => {
+    const h = makeHarness({ nodes: [user(1, 'question')] })
+    h.setTextChainRenderer((_key, owner, fallback) => (
+      'streaming' in owner
+        ? <span data-testid="streaming-text">{String(owner.streaming)}:{owner.text}</span>
+        : fallback
+    ))
+    const view = render(<h.ChatView {...h.props} />)
+
+    act(() => {
+      h.set({ partial: { turn: 2, step: 1, blocks: [{ kind: 'text', text: 'live answer' }] } })
+    })
+    expect(view.getByTestId('streaming-text').textContent).toBe('true:live answer')
+    expect(h.textChainOwners.at(-1)).toEqual({
+      key: 'conversation.chat.assistantText',
+      owner: {
+        nodeKey: 'fixture:assistant:2:1', blockIndex: 0, text: 'live answer', streaming: true,
+      },
+    })
+  })
+
+  it('does not dispatch a user text chain for a message without text', () => {
+    const imageOnly: UserMessageNode = {
+      ...user(1, ''),
+      content: [{ type: 'image', attachment: { id: 'image-1' } }] as never,
+    }
+    const h = makeHarness({ nodes: [imageOnly] })
+    render(<h.ChatView {...h.props} />)
+    expect(h.textChainOwners).toEqual([])
   })
 
   it('streaming partial frames update the tail without replacing a sibling Tool row', () => {

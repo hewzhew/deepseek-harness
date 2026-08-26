@@ -19,7 +19,7 @@ import {
 } from '../src/client/chat/message-chrome.ts'
 import {
   CompactionNodeView, ContextMessageNodeView, RetryNodeView, UnknownNodeView,
-  UserMessageNodeView,
+  SteeringMessageNodeView, UserMessageNodeView,
 } from '../src/client/chat/MessageItem.tsx'
 import { AssistantMarkdown, type AssistantMarkdownProps } from '../src/client/chat/AssistantMarkdown.tsx'
 import { StatsLine, type StatsLineProps } from '../src/client/chat/StatsLine.tsx'
@@ -43,6 +43,9 @@ afterEach(() => {
 // Mirrors the real lookup chain (conversation namespace, then common).
 const t: ChatNodeViewProps['t'] = makeTranslate(zh, commonZh)
 const renderMessageImages: AssistantMarkdownProps['renderMessageImages'] = () => null
+const SessionProviderStub: React.ComponentProps<typeof UserMessageNodeView>['SessionProvider'] = ({ children }) => (
+  <>{children('fixture-session' as never)}</>
+)
 const RETRY_ID = 'retry-fixture' as Extract<ConversationNode, { kind: 'model-retry' }>['retryId']
 
 interface MessageItemProps {
@@ -71,8 +74,15 @@ function MessageItem({ node, t: translate, referenceLabels }: MessageItemProps) 
   const props = { node: viewNode, t: translate, renderMessageImages } as ChatNodeViewProps
   switch (node.kind) {
     case 'user':
+      return (
+        <UserMessageNodeView
+          {...props as ChatNodeViewProps<'user'>}
+          renderSlotChain={(_key, _owner, opts) => opts?.fallback ?? null}
+          SessionProvider={SessionProviderStub}
+        />
+      )
     case 'steering':
-      return <UserMessageNodeView {...props as ChatNodeViewProps<'user' | 'steering'>} />
+      return <SteeringMessageNodeView {...props as ChatNodeViewProps<'steering'>} />
     case 'context':
       return <ContextMessageNodeView {...props as ChatNodeViewProps<'context'>} />
     case 'compaction':

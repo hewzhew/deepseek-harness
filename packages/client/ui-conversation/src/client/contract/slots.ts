@@ -120,6 +120,22 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       hookContext: string
       inject: ChatNodeTurnDataInjected
     }
+    /**
+     * Selector-routed replacement for one durable user-message text body.
+     * The surrounding bubble, images, non-text blocks, and actions remain
+     * Host-owned. An all-declined chain renders the literal Host fallback.
+     */
+    'conversation.chat.userText': { kind: 'chain'; scope: 'session'; owner: UserMessageTextOwnerProps }
+    /**
+     * Selector-routed replacement for one Assistant text block. Reasoning,
+     * images, Tool rows, interruption state, and actions remain Host-owned.
+     * An all-declined chain renders the Markdown Host fallback.
+     */
+    'conversation.chat.assistantText': {
+      kind: 'chain'
+      scope: 'session'
+      owner: AssistantMessageTextOwnerProps
+    }
     /** Optional renderer for one consecutive group of durable message images. */
     'conversation.message.images': { kind: 'single'; scope: 'session'; owner: MessageImagesOwnerProps }
     /**
@@ -424,6 +440,26 @@ export interface ChatNodeOwnerProps {
   /** Render a historical image group through the attachment slot. */
   renderMessageImages: RenderMessageImages
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+}
+
+/** Stable input for a user-message text renderer chain. */
+export interface UserMessageTextOwnerProps {
+  /** Engine-owned Chat Node key; stable while this message remains projected. */
+  readonly nodeKey: string
+  /** Joined raw text blocks before the Host applies literal-text presentation. */
+  readonly text: string
+}
+
+/** Stable input for an Assistant text-block renderer chain. */
+export interface AssistantMessageTextOwnerProps {
+  /** Engine-owned Chat Node key; stable across streaming and settlement. */
+  readonly nodeKey: string
+  /** Source-order block index within the Assistant content. */
+  readonly blockIndex: number
+  /** Raw Assistant text before the Host applies Markdown presentation. */
+  readonly text: string
+  /** Whether the owning Assistant step is still streaming. */
+  readonly streaming: boolean
 }
 
 /** Full props of one registered keyed Chat business renderer. */
