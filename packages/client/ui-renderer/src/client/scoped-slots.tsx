@@ -2,7 +2,7 @@
  * React renderer for declarative slots. Per-entry bindings enforce child
  * authorization, and entry boundaries contain registrant failures.
  */
-import { Component, useMemo, useState, useSyncExternalStore, type FC, type ReactNode } from 'react'
+import { Component, useEffect, useMemo, useState, useSyncExternalStore, type FC, type ReactNode } from 'react'
 import {
   SlotOwnershipError, StaleAuthorizationError,
   type ChainRenderOpts, type HostObservable, type LocaleFace, type RenderOpts,
@@ -316,6 +316,25 @@ function entryKeyOf(entry: StoredEntry): number {
  */
 interface ChainErrorFallback {
   readonly node: ReactNode
+}
+
+interface ChainSelectorFailure {
+  readonly entry: StoredEntry
+  readonly error: unknown
+  readonly key: string
+}
+
+/** Reports one continuously failing selector after commit without updating another component during render. */
+function ChainSelectorFailureReporter({ host, slotKey, failure }: {
+  readonly host: SlotRendererHost
+  readonly slotKey: string
+  readonly failure: ChainSelectorFailure
+}) {
+  const [firstFailure] = useState(failure)
+  useEffect(() => {
+    host.reportEntryError(slotKey, firstFailure.entry, firstFailure.error, { abdicate: false })
+  }, [firstFailure, host, slotKey])
+  return null
 }
 
 interface ChainOverlayProps {
@@ -887,6 +906,7 @@ function renderOutletContent(
     // contract), so the routing pass runs per render with zero mount side
     // effects: the first non-null election renders, decliners never mount.
     const selectScope = chainSelectScope(spec.scope, sessionInfo)
+    const selectorFailures: ChainSelectorFailure[] = []
     let elected: { entry: StoredEntry; key: number; owner: object } | undefined
     for (const entry of entries) {
       let matched: unknown
@@ -905,6 +925,13 @@ function renderOutletContent(
         console.error(
           `chain selector crashed in '${slotKey}' (${entry.registrant ?? 'unknown registrant'}), treating as declined:`,
           error)
+        selectorFailures.push({
+          entry,
+          error,
+          key: selectScope.sessionId === undefined
+            ? `${entryKeyOf(entry)}:root`
+            : `${entryKeyOf(entry)}:session:${selectScope.sessionId}`,
+        })
         continue
       }
       if (matched !== null) {
@@ -912,6 +939,14 @@ function renderOutletContent(
         break
       }
     }
+    const reports = selectorFailures.map(failure => (
+      <ChainSelectorFailureReporter
+        key={failure.key}
+        host={host}
+        slotKey={slotKey}
+        failure={failure}
+      />
+    ))
     if (opts?.overlay) {
       // Overlay chain (ChainRenderOpts.overlay): the fallback stays mounted
       // through elections — hidden via inline display:none (decisive over any
@@ -919,25 +954,33 @@ function renderOutletContent(
       // the owner's layout. The wrapper's tree position is constant, so React
       // reconciles instead of remounting and fallback state survives takeover.
       return (
-        <ChainOverlay
-          slotKey={slotKey}
-          fallback={opts.fallback ?? null}
-          electedKey={elected?.key}
-          renderElected={elected === undefined
-            ? undefined
-            : onFailure => guarded(
-              elected.entry,
-              elected.key,
-              elected.owner,
-              onFailure,
-              { node: null },
-            )}
-        />
+        <>
+          {reports}
+          <ChainOverlay
+            slotKey={slotKey}
+            fallback={opts.fallback ?? null}
+            electedKey={elected?.key}
+            renderElected={elected === undefined
+              ? undefined
+              : onFailure => guarded(
+                elected.entry,
+                elected.key,
+                elected.owner,
+                onFailure,
+                { node: null },
+              )}
+          />
+        </>
       )
     }
-    return elected === undefined
-      ? <>{opts?.fallback ?? null}</>
-      : guarded(elected.entry, elected.key, elected.owner)
+    return (
+      <>
+        {reports}
+        {elected === undefined
+          ? <>{opts?.fallback ?? null}</>
+          : guarded(elected.entry, elected.key, elected.owner)}
+      </>
+    )
   }
   // list: one row per id cell — the cell's shadowing winner, or the crash
   // face once every entry of the cell abdicated (a dry cell must not

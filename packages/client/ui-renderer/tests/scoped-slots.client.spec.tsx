@@ -426,6 +426,7 @@ describe('chain outlets and the renderSlotChain binding', () => {
       component: ({ matched }: { matched?: string }) => <b>{matched}</b>,
       select: owner => (owner as { pick?: string }).pick ?? null,
     }))
+    const report = vi.spyOn(h.host, 'reportEntryError')
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { view } = mountChainRoot(h, { 'k.chain': CHAIN_ROOT }, renderSlotChain => <>
       <main>{renderSlotChain('k.chain', { pick: 'OK' })}</main>
@@ -436,6 +437,11 @@ describe('chain outlets and the renderSlotChain binding', () => {
     expect(view.container.querySelector('main')!.textContent).toBe('OK')
     expect(view.container.querySelector('aside')!.textContent).toBe('fb')
     expect(spy.mock.calls.some(([msg]) => String(msg).includes('chain selector crashed'))).toBe(true)
+    expect(report).toHaveBeenCalledTimes(2)
+    expect(report.mock.calls.every(([, , error, info]) =>
+      error instanceof Error && error.message === 'selector boom' && !info.abdicate)).toBe(true)
+    act(() => { h.add('root', { component: () => null }) })
+    expect(report).toHaveBeenCalledTimes(2)
     spy.mockRestore()
   })
 
