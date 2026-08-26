@@ -14,7 +14,7 @@
 
 Chat 业务行是彼此独立的注册表贡献，不是封闭的内建联合。Client 插件通过 declaration merging 增加类型化 `ChatNodeDataMap` key，在 `ctx.conversationEvents` 上注册 `ConversationNodeDefinition`，再向 `conversation.chat.node` 注册匹配的 keyed renderer；它无须修改会话 fold 或中央 renderer switch。稳定事件 id、append/prepend 回放、Location data 与 renderer 约束见 [Conversation Node 实操手册](../../../docs/cookbook/adding-a-conversation-node.zh.md)。
 
-内建 `user` 与 `assistant-step` renderer 分别提供会话作用域的 `conversation.chat.userText` 与 `conversation.chat.assistantText` chain，供只改变正文表现的扩展使用。selector 会收到稳定的 Node identity 与原始文本；Assistant owner 还包含原始 block index 与 streaming 状态。所有 selector 都拒绝时使用 Host 的用户字面文本或 Markdown fallback；图片、推理、Tool 行、消息操作与 steering 仍由 Host 持有（[决策](../../../.agents/notes/implemented/architecture/2026-08-27-chat-message-text-renderer-chains.zh.md)）。
+内建 `user` 与 `assistant-step` renderer 分别提供会话作用域的 `conversation.chat.userText` 与 `conversation.chat.assistantText` chain，供只改变正文表现的扩展使用。selector 从框架 `scope` 参数获得 Session identity，并从 owner props 获得会话内 Node identity 与原始文本；Assistant owner 还包含原始 block index 与 streaming 状态。所有 selector 都拒绝时使用 Host 的用户字面文本或 Markdown fallback；图片、推理、Tool 行、消息操作与 steering 仍由 Host 持有（[决策](../../../.agents/notes/implemented/architecture/2026-08-27-chat-message-text-renderer-chains.zh.md)）。
 
 会话页头通过可选的会话作用域 `'conversation.session.header.lineage'` seat 派发当前普通 title 与每一级 subagent 面包屑，随后依次渲染 `'conversation.session.header.actions'` 列表和最右侧独立的 `'conversation.session.header.utilities'` 列表。每个谱系 owner 都会提供纯数据形式的面包屑身份与显示文本；render site 保留普通 title 作为回退，祖先还会提供向上导航的回调。移除 occupant 会恢复每个 title，且不影响页头操作；可选的会话工具不会改变这两个区域的顺序或位置。编辑器链的 currency 包含当前对话 `session`；ui-subagent 会选取 one-shot 或 parent 不可用的已寻址会话，并按原因显示只读文案，而普通 InputBar 会让所有已寻址 child 仅保留 Send，因为继续执行服务不公开逐 Activation 取消操作，`session.cancel` 也会绕过其所有权。
 

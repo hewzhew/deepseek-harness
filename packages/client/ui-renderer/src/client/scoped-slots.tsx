@@ -651,6 +651,28 @@ function StrictSessionEntry({ slotKey, entry, ownerProps, slotInjected, hookCont
  */
 const ANCHOR_STYLE = { display: 'contents' } as const
 
+/** Type-erased read-only identity passed to a chain selector. */
+interface ChainSelectRuntimeScope {
+  readonly sessionId?: string | undefined
+}
+
+const ROOT_CHAIN_SELECT_SCOPE: ChainSelectRuntimeScope = Object.freeze({})
+const chainSelectScopeCache = new WeakMap<SessionMaybeProvideInfo, ChainSelectRuntimeScope>()
+
+/** Resolve one immutable selector scope on the provide-info identity axis. */
+function chainSelectScope(
+  scope: SlotScope,
+  info: SessionMaybeProvideInfo,
+): ChainSelectRuntimeScope {
+  if (scope === 'root') return ROOT_CHAIN_SELECT_SCOPE
+  let value = chainSelectScopeCache.get(info)
+  if (value === undefined) {
+    value = Object.freeze({ sessionId: info.sessionId })
+    chainSelectScopeCache.set(info, value)
+  }
+  return value
+}
+
 function SlotOutlet({ slotKey, ownerProps, opts }: {
   slotKey: string
   ownerProps: object
@@ -774,15 +796,19 @@ function renderOutletContent(
   if (spec.kind === 'chain') {
     // Entries arrive priority-sorted from the ledger (the core orders at
     // register, ties keep registration sequence). Selectors are pure
-    // functions of the owner props (register-face contract), so the routing
-    // pass runs per render with zero mount side effects: the first non-null
-    // election renders, decliners never mount.
+    // functions of owner props plus framework scope identity (register-face
+    // contract), so the routing pass runs per render with zero mount side
+    // effects: the first non-null election renders, decliners never mount.
+    const selectScope = chainSelectScope(spec.scope, sessionInfo)
     let elected: ReactNode = null
     for (const entry of entries) {
       let matched: unknown
       try {
         // Chain entries always carry select (SlotCore register validation).
-        matched = (entry.select as (owner: object) => unknown)(ownerProps)
+        matched = (entry.select as (owner: object, scope: ChainSelectRuntimeScope) => unknown)(
+          ownerProps,
+          selectScope,
+        )
       } catch (error) {
         // A throwing selector is a registrant contract breach (select MUST be
         // pure and total), but it runs before the entry's SlotErrorBoundary

@@ -27,6 +27,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     }
     'chain.tools': { kind: 'keyed'; scope: 'session' }
     'chain.takeover': { kind: 'chain'; scope: 'session'; owner: { items: readonly Item[] } }
+    'chain.rootTakeover': { kind: 'chain'; scope: 'root'; owner: { items: readonly Item[] } }
+    'chain.maybeTakeover': { kind: 'chain'; scope: 'session-maybe'; owner: { items: readonly Item[] } }
   }
 }
 
@@ -98,6 +100,8 @@ declare function Needs(props: PropsRuntime<'chain.conv'> & { send: (t: string) =
 declare function ContextOwner(props: PropsRuntime<'chain.frame'> & PropsRenderSlots<'chain.context'>): ReactNode
 declare function ContextReader(props: ContextProps): ReactNode
 declare function Takeover(props: PropsRuntime<'chain.takeover'> & { matched: Item }): ReactNode
+declare function RootTakeover(props: PropsRuntime<'chain.rootTakeover'> & { matched: Item }): ReactNode
+declare function MaybeTakeover(props: PropsRuntime<'chain.maybeTakeover'> & { matched: Item }): ReactNode
 declare function WideTakeover(props: PropsRuntime<'chain.takeover'> & { matched: Item | string }): ReactNode
 declare function NarrowTakeover(props: PropsRuntime<'chain.takeover'> & { matched: { kind: 'q'; id: string; extra: number } }): ReactNode
 
@@ -152,9 +156,31 @@ describe('terminal-design type chain', () => {
       // chain position.
       core.register({
         name: 'chain.takeover',
-        select: ({ items }) => items.find(i => i.kind === 'q') ?? null,
+        select: ({ items }, scope) => {
+          const sid: string = scope.sessionId
+          void sid
+          return items.find(i => i.kind === 'q') ?? null
+        },
         priority: 1,
       }, Takeover)
+
+      core.register({
+        name: 'chain.maybeTakeover',
+        select: ({ items }, scope) => {
+          const sid: string | undefined = scope.sessionId
+          void sid
+          return items.find(i => i.kind === 'q') ?? null
+        },
+      }, MaybeTakeover)
+
+      core.register({
+        name: 'chain.rootTakeover',
+        select: ({ items }, scope) => {
+          // @ts-expect-error root selector scope carries no session identity
+          void scope.sessionId
+          return items.find(i => i.kind === 'q') ?? null
+        },
+      }, RootTakeover)
 
       // A component accepting a wider matched than the selector supplies
       // checks through parameter contravariance.

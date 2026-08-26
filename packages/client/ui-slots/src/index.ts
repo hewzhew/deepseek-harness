@@ -250,11 +250,23 @@ export interface ChainRenderOpts {
  * return elects its entry
  * and becomes the component's `matched` prop; `null` passes to the next
  * entry; all-null falls to the owner's {@link ChainRenderOpts} fallback.
- * MUST be pure — a function of the owner props only, no external mutable
- * reads, no side effects (the decline decision lives here, never in a
- * mounted component probing its own props).
+ * The read-only scope identity is framework data, separate from the owner
+ * share: session slots receive a definite `sessionId`, session-maybe slots
+ * receive the current id or `undefined`, and root slots receive an empty
+ * object. MUST be pure — a function of these two arguments only, no external
+ * mutable reads, no side effects (the decline decision lives here, never in
+ * a mounted component probing its own props).
  */
-export type ChainSelect<O extends object, M> = (owner: O) => M | null
+export type ChainSelect<O extends object, M, S extends object = object> =
+  (owner: O, scope: S) => M | null
+
+/** Read-only framework identity supplied to a chain selector for one slot scope. */
+export type ChainSelectScope<K extends keyof SlotMap & string> =
+  ScopeOf<K> extends 'session'
+    ? Readonly<{ sessionId: SessionIdOf }>
+    : ScopeOf<K> extends 'session-maybe'
+      ? Readonly<{ sessionId: SessionIdOf | undefined }>
+      : object
 
 /** Keys of a slot-key union whose SlotMap entry is chain-kind (renderSlotChain's dispatch domain). */
 export type ChainKeysOf<S extends keyof SlotMap & string> =
@@ -499,7 +511,11 @@ export type KindOptions<
     }
       : SlotMap[K]['kind'] extends 'chain' ? {
         /** Routing selector, mandatory on chain entries; `M` (the component's `matched` prop) infers from its return. */
-        select: ChainSelect<SlotMap[K] extends { owner: infer O extends object } ? O : object, M>
+        select: ChainSelect<
+          SlotMap[K] extends { owner: infer O extends object } ? O : object,
+          M,
+          ChainSelectScope<K>
+        >
         /** Explicit chain position (ascending, default 0, lower tries first); ties keep registration = assembly order. */
         priority?: number
       }
@@ -561,7 +577,7 @@ export interface StoredEntry {
   component: unknown
   options: { key?: string; id?: string; order?: number; label?: SlotLabel; priority?: number }
   /** Chain routing selector (type-erased like `inject`; present exactly on chain-slot entries). */
-  select?: ((owner: never) => unknown) | undefined
+  select?: ((owner: never, scope: never) => unknown) | undefined
   /** Registrant business face; positional params derive from the declaration (sessionId?, actions?). */
   inject?: ((...args: never[]) => Record<string, unknown>) | undefined
   /** Child-slot declaration table (declaration + authorization + runtime spec in one). */
@@ -597,7 +613,7 @@ interface ErasedOptions {
   id?: string | undefined
   order?: number | undefined
   label?: SlotLabel | undefined
-  select?: ((owner: never) => unknown) | undefined
+  select?: ((owner: never, scope: never) => unknown) | undefined
   priority?: number | undefined
   children?: Record<string, SlotSpec<SlotEntryDef>> | undefined
   store?: StoreDecl | undefined

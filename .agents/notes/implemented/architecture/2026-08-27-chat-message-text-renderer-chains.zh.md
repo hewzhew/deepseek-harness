@@ -19,13 +19,15 @@ Host 需要一处权威止于正文的扩展点。没有扩展接收消息时，
 
 每个 owner 调用 `renderSlotChain` 时都传入 Host renderer 作为 fallback。因此所有 user selector 都拒绝时保留字面文本与引用投影；所有 Assistant selector 都拒绝时保留官方 Markdown renderer、代码操作与文件提及。chain selector 是唯一的路由判定，遵循 [slot 体系的 chain 约定](2026-07-22-slot-type-chain-implementation.zh.md)。
 
+Node key 只在单个 Session 内稳定，并非全局稳定。因此 selector 经框架独立的只读 scope 参数获得当前 `sessionId`，再将它与 owner 的 `nodeKey` 以及 Assistant block 的 `blockIndex` 组合使用。owner 类型仍然只承载消息数据，不重复框架 scope identity。
+
 这些子 slot 不覆盖 user 图片、未知内容 block、Assistant 推理、图片、Tool call、中断状态、消息操作、时钟、分支或 Turn-tail 扩展。它们继续留在所选正文周围的既有 Host 组件中。待处理与持久 steering 也继续使用 Host 字面文本，因为 steering 表现参与从待处理项到持久消息的交接，而不属于第三方 transcript 装饰。
 
 keyed Chat renderer 拥有每个子项的声明。卸载该 renderer 会通过普通 slot 生命周期移除声明及其贡献。稳定 Node key 使当选 renderer 能在普通更新之间保持 identity；`streaming` 则告诉 Assistant renderer 同一逻辑文本是否仍在变化。
 
 ## 验证
 
-Conversation 组件测试覆盖 user 接管、多个 Assistant 文本 block、源码 block index、稳定 Node key、streaming 状态、所有 selector 拒绝时的字面文本与 Markdown fallback，以及 Host 持有的推理和操作。apply 测试覆盖两个子项的声明，以及随所属插件 fiber 一起移除。生成的 Client slot 目录向扩展作者公开这两个名称与 owner 字段。
+Conversation 组件测试覆盖 user 接管、多个 Assistant 文本 block、源码 block index、稳定 Node key、streaming 状态、所有 selector 拒绝时的字面文本与 Markdown fallback，以及 Host 持有的推理和操作。Slot renderer 测试覆盖不可变的 root、严格会话与 session-maybe selector scope identity 以及 Session 切换；类型测试保持各 scope 的 `sessionId` 约定彼此分明。apply 测试覆盖两个子项的声明，以及随所属插件 fiber 一起移除。生成的 Client slot 目录向扩展作者公开这两个名称与 owner 字段。
 
 ## 考虑过的替代方案
 

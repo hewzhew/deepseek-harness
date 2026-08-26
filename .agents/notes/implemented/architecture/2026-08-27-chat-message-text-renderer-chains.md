@@ -19,13 +19,15 @@ The built-in `user` and `assistant-step` keyed Chat renderers declare two sessio
 
 Each owner calls `renderSlotChain` with the Host rendering as its fallback. An all-declined user chain therefore retains literal text and reference projection; an all-declined Assistant chain retains the official Markdown renderer, code actions, and file mentions. The chain selector is the only routing decision, following the [slot-system chain contract](2026-07-22-slot-type-chain-implementation.md).
 
+Node keys are stable within one Session, not globally. The selector therefore receives the current `sessionId` through the framework's separate read-only scope argument and combines it with the owner `nodeKey` and, for Assistant blocks, `blockIndex`. The owner types remain message data only; they do not duplicate framework scope identity.
+
 The child slots do not cover user images, unknown content blocks, Assistant reasoning, images, Tool calls, interruption status, message actions, clocks, branches, or Turn-tail extensions. These remain in their existing Host components around the selected body. Pending and durable steering also remain literal Host text because steering presentation participates in the pending-to-durable handoff rather than in third-party transcript decoration.
 
 The keyed Chat renderer owns each child declaration. Unloading that renderer removes the declaration and its contributions through the normal slot lifecycle. Stable Node keys let an elected renderer preserve identity across ordinary updates; `streaming` tells an Assistant renderer when the same logical text is still changing.
 
 ## Verification
 
-Conversation component tests cover user takeover, multiple Assistant text blocks, source block indexes, stable Node keys, streaming state, all-declined literal and Markdown fallbacks, and Host-owned reasoning and actions. Apply tests cover both child declarations and their removal with the owning plugin fiber. The generated Client slot catalog publishes the two names and owner fields for extension authors.
+Conversation component tests cover user takeover, multiple Assistant text blocks, source block indexes, stable Node keys, streaming state, all-declined literal and Markdown fallbacks, and Host-owned reasoning and actions. Slot renderer tests cover immutable root, strict-session, and session-maybe selector scope identities and Session switches; type tests keep the scope-specific `sessionId` contracts distinct. Apply tests cover both child declarations and their removal with the owning plugin fiber. The generated Client slot catalog publishes the two names and owner fields for extension authors.
 
 ## Alternatives considered
 

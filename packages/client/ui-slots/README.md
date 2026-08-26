@@ -13,7 +13,7 @@ One `register({ name, children?, store?, inject?, ...kind }, Component)` call co
 | store | `PropsStore<H>` | the declared handle: `useStore` selector hook + draft-stripped `actions` |
 | business | `I` | inferred from the `inject` factory's return |
 
-Chain-kind slots invert keyed routing — entries self-nominate instead of the dispatch site picking an `entryKey`: each registration carries a pure `ChainSelect` selector (plus optional ascending `priority`, ties in registration order), the first non-null return elects its entry and becomes the component's `matched` prop, and all-null falls to the owner's `renderSlotChain` fallback (`ChainRenderOpts`).
+Chain-kind slots invert keyed routing — entries self-nominate instead of the dispatch site picking an `entryKey`: each registration carries a pure `ChainSelect` selector (plus optional ascending `priority`, ties in registration order), the first non-null return elects its entry and becomes the component's `matched` prop, and all-null falls to the owner's `renderSlotChain` fallback (`ChainRenderOpts`). The selector receives owner props plus a separate read-only `ChainSelectScope`: strict session slots get a definite `sessionId`, session-maybe slots get the current id or `undefined`, and root slots get an empty object.
 
 The standard-kit interfaces (`SessionStandardProps`, `GlobalStandardProps`) are declared empty here and merged by the runtime package (same declare-merge pattern as SlotMap keys). The renderer binds the runtime's session and workspace observable sources into selector hooks. Inject factory parameters derive from the declaration (`InjectParams`): session slots get `sessionId`, a declared store appends baked `actions`, nothing else — data access lives in the apply closure's ctx.
 

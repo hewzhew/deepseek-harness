@@ -225,11 +225,13 @@ function mountRoot(h: Fake, children: Record<string, DeclaredSpec>, body: (rende
 const SINGLE_ROOT: DeclaredSpec = { kind: 'single', scope: 'root' }
 const SINGLE_SESSION: DeclaredSpec = { kind: 'single', scope: 'session' }
 const CHAIN_ROOT: DeclaredSpec = { kind: 'chain', scope: 'root' }
+const CHAIN_SESSION: DeclaredSpec = { kind: 'chain', scope: 'session' }
+const CHAIN_SESSION_MAYBE: DeclaredSpec = { kind: 'chain', scope: 'session-maybe' }
 
 /** Chain entry literal: top-level select, priority in the options bag (the StoredEntry chain shape). */
 const chainEntryOf = (partial: {
   component: unknown
-  select: (owner: object) => unknown
+  select: (owner: object, scope: Readonly<{ sessionId?: string | undefined }>) => unknown
   priority?: number
 }): Omit<StoredEntry, 'options'> & { options?: StoredEntry['options'] } => ({
   component: partial.component,
@@ -345,6 +347,55 @@ describe('child outlets and the renderSlot binding', () => {
 })
 
 describe('chain outlets and the renderSlotChain binding', () => {
+  it('passes immutable scope identity separately from owner props for every scope', () => {
+    const h = makeHost()
+    h.addSession('s1')
+    h.addSession('s2')
+    h.declare('k.root-chain', CHAIN_ROOT)
+    h.declare('k.session-chain', CHAIN_SESSION)
+    h.declare('k.maybe-chain', CHAIN_SESSION_MAYBE)
+    const seen: Record<'root' | 'session' | 'maybe', { owner: object; scope: Readonly<{ sessionId?: string | undefined }> }[]> = {
+      root: [], session: [], maybe: [],
+    }
+    const addProbe = (key: string, bucket: keyof typeof seen) => h.add(key, chainEntryOf({
+      component: () => null,
+      select: (owner, scope) => {
+        seen[bucket].push({ owner, scope })
+        return null
+      },
+    }))
+    addProbe('k.root-chain', 'root')
+    addProbe('k.session-chain', 'session')
+    addProbe('k.maybe-chain', 'maybe')
+    const children = {
+      'k.root-chain': CHAIN_ROOT,
+      'k.session-chain': CHAIN_SESSION,
+      'k.maybe-chain': CHAIN_SESSION_MAYBE,
+    }
+    const { view } = mountChainRoot(h, children, renderSlotChain => <>
+      <main>{renderSlotChain('k.root-chain', { tag: 'root' }, { fallback: 'R' })}</main>
+      <aside>{renderSlotChain('k.session-chain', { tag: 'session' }, { fallback: 'S' })}</aside>
+      <footer>{renderSlotChain('k.maybe-chain', { tag: 'maybe' }, { fallback: 'M' })}</footer>
+    </>)
+
+    expect(view.container.textContent).toBe('RSM')
+    expect(seen.root.at(-1)).toMatchObject({ owner: { tag: 'root' }, scope: {} })
+    expect(seen.root.at(-1)!.scope).not.toHaveProperty('sessionId')
+    expect(seen.session).toHaveLength(0)
+    expect(seen.maybe.at(-1)).toMatchObject({ owner: { tag: 'maybe' }, scope: { sessionId: undefined } })
+
+    act(() => { h.current.set('s1') })
+    expect(seen.session.at(-1)).toMatchObject({ owner: { tag: 'session' }, scope: { sessionId: 's1' } })
+    expect(seen.maybe.at(-1)!.scope.sessionId).toBe('s1')
+    expect(seen.session.at(-1)!.owner).not.toHaveProperty('sessionId')
+    expect(Object.isFrozen(seen.root.at(-1)!.scope)).toBe(true)
+    expect(Object.isFrozen(seen.session.at(-1)!.scope)).toBe(true)
+
+    act(() => { h.current.set('s2') })
+    expect(seen.session.at(-1)!.scope.sessionId).toBe('s2')
+    expect(seen.maybe.at(-1)!.scope.sessionId).toBe('s2')
+  })
+
   it('elects the first non-null selector in order, injects matched, and skips decliners without mounting them', () => {
     const h = makeHost()
     h.declare('k.chain', CHAIN_ROOT)

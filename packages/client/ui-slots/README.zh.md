@@ -13,7 +13,7 @@ Slot 注册表纯核心、slot 终端设计：SlotMap 声明合并、SlotCore �
 | store | `PropsStore<H>` | 已声明 handle：`useStore` selector 钩子 + 移除 draft 的 `actions` |
 | business | `I` | 从 `inject` factory 返回值推断 |
 
-chain-kind slot 会反转键控路由：条目自行提名，而不是由分发点选择 `entryKey`。每次注册都携带一个纯 `ChainSelect` selector（另有可选的升序 `priority`，相同值按注册顺序处理）；第一个非 null 返回值选中其条目，并成为组件的 `matched` prop；全部返回 null 时则使用 owner 的 `renderSlotChain` fallback（`ChainRenderOpts`）。
+chain-kind slot 会反转键控路由：条目自行提名，而不是由分发点选择 `entryKey`。每次注册都携带一个纯 `ChainSelect` selector（另有可选的升序 `priority`，相同值按注册顺序处理）；第一个非 null 返回值选中其条目，并成为组件的 `matched` prop；全部返回 null 时则使用 owner 的 `renderSlotChain` fallback（`ChainRenderOpts`）。selector 除 owner props 外还会收到独立的只读 `ChainSelectScope`：严格会话 slot 获得确定的 `sessionId`，session-maybe slot 获得当前 id 或 `undefined`，root slot 获得空对象。
 
 标准工具包接口（`SessionStandardProps`、`GlobalStandardProps`）在这里声明为空，由运行时包合并（与 SlotMap key 相同的 declare-merge 模式）。renderer 会把运行时会话和 Workspace observable source 绑定为 selector 钩子。Inject factory 参数从声明派生（`InjectParams`）：会话 slot 获得 `sessionId`；声明 store 时追加 baked `actions`；没有其他参数，数据访问位于 apply 闭包的 ctx 中。
 
