@@ -325,26 +325,29 @@ export interface SessionAreaProps {
 export type SessionProviderComponent = (props: SessionAreaProps) => ReactNode
 
 /**
- * Child-slot render share: `renderSlot` statically narrowed to the entry's
- * declared children keys. Delegation is plain props passing (hand
- * `props.renderSlot` down); the authorizing identity stays the registering
- * entry. `__renders` is a phantom variance anchor (never materialized):
+ * Child-slot render share: each dispatch method is statically narrowed to the
+ * entry's declared children keys. Delegation is plain props passing; the
+ * authorizing identity stays the registering entry. `__renders` is a phantom
+ * variance anchor (never materialized):
  * generic method signatures compare loosely across differing key unions, so
  * this contravariant marker is what actually enforces "component key set ⊆
  * children declaration" at the register call site.
  */
-export type PropsRenderSlots<S extends keyof SlotMap & string> = {
-  /**
-   * Render a declared non-chain child slot (chain keys dispatch through
-   * `renderSlotChain` — their routing lives in entry selectors).
-   * @param key - declared child key.
-   * @param owner - owner props share for that key (decided at the render site).
-   * @param opts - kind dispatch options.
-   * @returns rendered node(s).
-   */
-  renderSlot: RenderSlotFn<Exclude<S, ChainKeysOf<S>>>
-  readonly __renders?: ((key: S) => void) | undefined
-} & ([ChainKeysOf<S>] extends [never] ? object : {
+export type PropsRenderSlots<S extends keyof SlotMap & string> = ([Exclude<S, ChainKeysOf<S>>] extends [never]
+  ? object
+  : {
+    /**
+       * Render a declared non-chain child slot (chain keys dispatch through
+       * `renderSlotChain` — their routing lives in entry selectors).
+       * @param key - declared child key.
+       * @param owner - owner props share for that key (decided at the render site).
+       * @param opts - kind dispatch options.
+       * @returns rendered node(s).
+       */
+    renderSlot: RenderSlotFn<Exclude<S, ChainKeysOf<S>>>
+  }) & {
+    readonly __renders?: ((key: S) => void) | undefined
+  } & ([ChainKeysOf<S>] extends [never] ? object : {
   /**
    * Render a declared chain child slot: entry selectors run in chain order
    * over `owner`; the first non-null match renders its component with the
@@ -354,13 +357,13 @@ export type PropsRenderSlots<S extends keyof SlotMap & string> = {
    * @param opts - fallback body for the all-null case.
    * @returns rendered node(s).
    */
-  renderSlotChain: <K extends ChainKeysOf<S>>(key: K, owner: OwnerOf<K>, opts?: ChainRenderOpts) => ReactNode
-}) & ('session' extends ScopeOf<S>
+    renderSlotChain: <K extends ChainKeysOf<S>>(key: K, owner: OwnerOf<K>, opts?: ChainRenderOpts) => ReactNode
+  }) & ('session' extends ScopeOf<S>
   // The SessionProvider seat rides the same source as renderSlot: declaring
   // a session-scope child is what makes a session area exist, so the seat
   // derives from the children key set's scopes (renderer injects the value).
-  ? { SessionProvider: SessionProviderComponent }
-  : object)
+    ? { SessionProvider: SessionProviderComponent }
+    : object)
 
 /**
  * Registration-position component shape: the bare call signature, so composed

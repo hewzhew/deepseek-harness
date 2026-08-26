@@ -45,7 +45,7 @@ A contributor whose activation order is independent from the declaring entry use
 | Share | Type | Source of truth | Contents |
 |---|---|---|---|
 | runtime | `PropsRuntime<K>` | SlotMap entry for K | `OwnerOf<K>` (render-site params) + session-scope standard `useSession`/`sessionId` + global `useSessions`/`useWorkspaces` |
-| child render | `PropsRenderSlots<S>` | register's `children` keys | `renderSlot(key, owner)`, key statically narrowed to S; chain keys add `renderSlotChain` |
+| child render | `PropsRenderSlots<S>` | register's `children` keys | `renderSlot(key, owner)` for non-chain keys and `renderSlotChain` for chain keys, each statically narrowed to S; a chain-only set has no `renderSlot` prop |
 | store | `PropsStore<H>` | store factory return type | `useStore` selector hook + `actions.*` (draft-param stripped) |
 | business | `I` | inject return type | plain data + callbacks; a reserved `hooks` compartment of bare observables arrives bound as `use<Name>` selector hooks (`InjectFace<I>`) |
 

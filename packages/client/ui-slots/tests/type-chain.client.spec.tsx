@@ -168,6 +168,10 @@ describe('terminal-design type chain', () => {
       const chainSlots: PropsRenderSlots<'chain.takeover' | 'chain.conv'> = null as never
       chainSlots.renderSlotChain('chain.takeover', { items: [] }, { fallback: null })
       chainSlots.renderSlot('chain.conv', {})
+      const chainOnly: PropsRenderSlots<'chain.takeover'> = null as never
+      chainOnly.renderSlotChain('chain.takeover', { items: [] })
+      // @ts-expect-error chain-only children provide no plain renderSlot share
+      type _NoPlainRenderSlot = typeof chainOnly.renderSlot
 
       // A parent registration declares the Slot inject once; every child
       // entry receives the same custom Hook, bound to official standard props

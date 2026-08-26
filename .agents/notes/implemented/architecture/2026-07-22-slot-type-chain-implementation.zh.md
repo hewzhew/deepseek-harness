@@ -45,7 +45,7 @@ ctx.slots.register({
 | 份额 | 类型 | 真源 | 内容 |
 |---|---|---|---|
 | 运行时 | `PropsRuntime<K>` | K 对应的 SlotMap entry | `OwnerOf<K>`（渲染现场传参）+ session scope 标配 `useSession`/`sessionId` + 全局 `useSessions`/`useWorkspaces` |
-| 子 slot 渲染 | `PropsRenderSlots<S>` | register 的 `children` 键集 | `renderSlot(key, owner)`，键参静态收窄到 S；chain 键另有 `renderSlotChain` |
+| 子 slot 渲染 | `PropsRenderSlots<S>` | register 的 `children` 键集 | 非 chain 键使用 `renderSlot(key, owner)`，chain 键使用 `renderSlotChain`，两者都静态收窄到 S；纯 chain 集合没有 `renderSlot` prop |
 | store | `PropsStore<H>` | store 工厂的返回类型 | `useStore` selector 钩子 + `actions.*`（剥去 draft 形参） |
 | 业务 | `I` | inject 的返回类型 | 普通数据+回调；保留的 `hooks` 区域内，裸 observable 经绑定后以 `use<Name>` 选择器钩子的形式到达（`InjectFace<I>`） |
 
